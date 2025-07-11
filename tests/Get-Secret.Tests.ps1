@@ -43,7 +43,9 @@ Describe 'It gets logins with vault specified' {
 	
 	It 'Gets the login password with vault specified' {
 		$cred = Get-Secret -Vault "$($testDetails.Vault)" -Name "$($testDetails.LoginName)"
-		$([System.Runtime.InteropServices.Marshal]::PtrToStringAuto( `
+		# using PtrToStringBSTR ensures uniform results across platforms
+		# https://stackoverflow.com/questions/60404847/are-you-able-to-use-ptrtostringauto-to-decrypt-a-secure-string-in-powershell-7-o
+		$([System.Runtime.InteropServices.Marshal]::PtrToStringBSTR( `
 			[System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($cred.Password))) | Should -Be $testDetails.Password
 	}
 

@@ -1,7 +1,7 @@
 using namespace Microsoft.PowerShell.SecretManagement
 
-function Invoke-OpCommand{
-<#
+function Invoke-OpCommand {
+    <#
 .SYNOPSIS
 Calls the 1Password CLI console application and returns an object with three properties:
     StdOut: Text, excluding errors, returned by the application 
@@ -18,14 +18,19 @@ Argument list to be passed to the 1Password CLI console application.
 #>
     param(
         [Parameter(
-            Mandatory=$true,
-            Position=0,
-            HelpMessage="Argument list to be passed to the 1Password CLI console application.")]
+            Mandatory = $true,
+            Position = 0,
+            HelpMessage = "Argument list to be passed to the 1Password CLI console application.")]
         [String[]]$ArgumentList
     )
     
-    $pinfo = [System.Diagnostics.ProcessStartInfo]::new();
-    $pinfo.FileName = "op.exe";
+    $pinfo = [System.Diagnostics.ProcessStartInfo]::new()
+    # on systems other than Windows "op" is the correct way to call 1Password-cli
+    if ($IsWindows -or ($PSVersionTable.PSVersion.Major -eq 5)) {
+        $pinfo.FileName = "op.exe"
+    } else {
+        $pinfo.FileName = "op"
+    }
     $pinfo.RedirectStandardError = $true;
     $pinfo.RedirectStandardOutput = $true;
     $pinfo.UseShellExecute = $false;
@@ -37,8 +42,8 @@ Argument list to be passed to the 1Password CLI console application.
     $stderr = $p.StandardError.ReadToEnd();
     $p.WaitForExit();
     return [PSCustomObject]@{
-        StdOut = $stdout;
-        StdErr = $stderr;
+        StdOut   = $stdout;
+        StdErr   = $stderr;
         ExitCode = $p.ExitCode;
     }
 }
@@ -62,13 +67,13 @@ function Test-SecretVault {
     Write-Verbose "Validating the SecretManagement Vault '$($VaultName)'..."
 
     $secretVault = Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue
-    if ($null -eq $secretVault){
+    if ($null -eq $secretVault) {
         Write-Error "The SecretManagement vault '$($VaultName)' is not registered."
         return $false
     }
-    if ($null -eq $AdditionalParameters){
+    if ($null -eq $AdditionalParameters) {
         $VaultParameters = $secretVault.VaultParameters
-    }else{
+    } else {
         $VaultParameters = $AdditionalParameters
     }
 
@@ -85,11 +90,11 @@ function Test-SecretVault {
     }
     $commandArgs.AddRange(@('--format', 'json'));
     $result = Invoke-OpCommand $commandArgs;
-    if ($result.ExitCode -ne 0){
+    if ($result.ExitCode -ne 0) {
         #Error on execution
         Write-Error "An arror occurred while accessing 1Password: $($result.StdErr)";
         return $false;
-    }else{
+    } else {
         Write-Verbose "1Password vaults successfully read."
     }
     $vaults = $result.StdOut | ConvertFrom-Json;
@@ -100,14 +105,14 @@ function Test-SecretVault {
     if ($VaultParameters.OPVault) {
         $targetVault = $vaults.Where({ $_.name -eq $VaultParameters.OPVault -or $_.id -eq $VaultParameters.OPVault })
 
-        if ($targetVault){
+        if ($targetVault) {
             Write-Verbose "1Password vault '$($VaultParameters.OPVault)' successfully found."
             return $true
-        }else{
+        } else {
             Write-Error "The vault '$($VaultParameters.OPVault)' was not found in 1Password."
             return $false
         }
-    }else{
+    } else {
         Write-Verbose "1Password contains '$($vaults.Count)' vaults."
         return ($vaults.Count -gt 0)
     }
@@ -127,12 +132,12 @@ function Get-SecretInfo {
 
     Write-Verbose "'Get-SecretInfo' invoked ..."
 
-    if ($null -ne $AdditionalParameters){
+    if ($null -ne $AdditionalParameters) {
         $VaultParameters = $AdditionalParameters
-    }else{
-        if ($null -eq $VaultName){$VaultName = ""}
+    } else {
+        if ($null -eq $VaultName) { $VaultName = "" }
         $secretVault = Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue
-        if ($null -eq $secretVault){
+        if ($null -eq $secretVault) {
             Write-Error "The SecretManagement vault '$($VaultName)' is not registered."
             return $null
         }
@@ -149,28 +154,27 @@ function Get-SecretInfo {
     }
     $commandArgs.AddRange(@('--categories', '"LOGIN,PASSWORD"', '--format', 'json'));
     $result = Invoke-OpCommand $commandArgs;
-    if ($result.ExitCode -eq 0){
+    if ($result.ExitCode -eq 0) {
         $items = $result.StdOut -replace 'b5UserUUID', 'B5UserUUID' | ConvertFrom-Json;
 
-        if (-not [string]::IsNullOrEmpty($Name)){
+        if (-not [string]::IsNullOrEmpty($Name)) {
             $items = $items | Where-Object { $_.title -eq $Name };
-        }else{
-            if ([string]::IsNullOrEmpty($Filter)){
+        } else {
+            if ([string]::IsNullOrEmpty($Filter)) {
                 $Filter = "*"
             }
             $items = $items | Where-Object { $_.title -like $Filter };
         }
-    }else{
+    } else {
         $items = $null;
     }
 
-    $keyList = [System.Collections.Generic.Dictionary[[string],[SecretInformation]]]::new();
+    $keyList = [System.Collections.Generic.Dictionary[[string], [SecretInformation]]]::new();
 
     foreach ($item in $items) {
         if ( $keyList.ContainsKey(($item.title).ToLower()) ) {
             Write-Verbose "Get-SecretInfo: An item with the same key has already been added. Key: [$($item.title)]"
-        }
-        else {
+        } else {
             $type = switch ($item.category) {
                 'LOGIN' { [SecretType]::PSCredential }
                 'PASSWORD' { [SecretType]::SecureString }
@@ -185,7 +189,7 @@ function Get-SecretInfo {
             # See: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.secretmanagement/get-secret?view=ps-modules#-inputobject
             $keyList.Add( `
                 $(($item.title).ToLower()), `
-                [SecretInformation]::new($item.title, $type, $($VaultName)) `
+                    [SecretInformation]::new($item.title, $type, $($VaultName)) `
             );
         }
     }
@@ -211,12 +215,12 @@ function Get-Secret {
 
     Write-Verbose "'Get-Secret' invoked ..."
 
-    if ($null -ne $AdditionalParameters){
+    if ($null -ne $AdditionalParameters) {
         $VaultParameters = $AdditionalParameters
-    }else{
-        if ($null -eq $VaultName){$VaultName = ""}
+    } else {
+        if ($null -eq $VaultName) { $VaultName = "" }
         $secretVault = Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue
-        if ($null -eq $secretVault){
+        if ($null -eq $secretVault) {
             Write-Error "The SecretManagement vault '$($VaultName)' is not registered."
             return $null
         }
@@ -233,7 +237,7 @@ function Get-Secret {
     }
     $commandArgs.AddRange(@('--format', 'json'));
     $result = Invoke-OpCommand $commandArgs;
-    if ($result.ExitCode -ne 0){
+    if ($result.ExitCode -ne 0) {
         Write-Verbose $result.StdErr;
         return $null; # Not found
     }
@@ -258,13 +262,13 @@ function Get-Secret {
         $output = @{UserName = $username.value }
     } elseif ([string]::IsNullOrEmpty($username.value)) {
         if ($AsPlainText) {
-            if($totp -gt -1){
+            if ($totp -gt -1) {
                 $output = @{Password = $username.value; totp = $totp }
             } else {
                 $output = $username.value
             }
         } else {
-            if($totp -gt -1){
+            if ($totp -gt -1) {
                 $output = @{Password = $secureStringPassword; totp = $totp }
             } else {
                 $output = $secureStringPassword
@@ -272,19 +276,19 @@ function Get-Secret {
         }
     } else {
         if ($AsPlainText) {
-            if($totp -gt -1){
+            if ($totp -gt -1) {
                 $output = @{UserName = $username.value; Password = $username.value; totp = $totp }
             } else {
                 $output = $username.value
             }
         } else {
-            if($totp -gt -1){
+            if ($totp -gt -1) {
                 $output = @{
                     Credentials = [PSCredential]::new(
                         $username.value,
                         $secureStringPassword
                     );
-                    totp = $totp
+                    totp        = $totp
                 }
             } else {
                 $output = [PSCredential]::new(
@@ -316,12 +320,12 @@ function Set-Secret {
 
     Write-Verbose "'Set-Secret' invoked ..."
 
-    if ($null -ne $AdditionalParameters){
+    if ($null -ne $AdditionalParameters) {
         $VaultParameters = $AdditionalParameters
-    }else{
-        if ($null -eq $VaultName){$VaultName = ""}
+    } else {
+        if ($null -eq $VaultName) { $VaultName = "" }
         $secretVault = Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue
-        if ($null -eq $secretVault){
+        if ($null -eq $secretVault) {
             Write-Error "The SecretManagement vault '$($VaultName)' is not registered."
             return $null
         }
@@ -339,14 +343,14 @@ function Set-Secret {
     $commandArgs.AddRange(@('--format', 'json'));
     $result = Invoke-OpCommand $commandArgs;
 
-    if ($result.ExitCode -ne 0){
-        if ($result.StdErr.Contains("More than one item matches")){
+    if ($result.ExitCode -ne 0) {
+        if ($result.StdErr.Contains("More than one item matches")) {
             throw [Exception]::new($result.StdErr);
             return $null;
         }
         # Not found
         $verb = 'create';
-    }else{
+    } else {
         # Found and there is only one
         $verb = 'edit';
     }
@@ -384,8 +388,7 @@ function Set-Secret {
                 $commandArgs.Add("--category=$category") | Out-Null
                 $commandArgs.Add("--title=""$Name""") | Out-Null
                 $commandArgs.Add("password=""$Secret""") | Out-Null
-            }
-            else {
+            } else {
                 Write-Verbose "Updating '$Name'"
 
                 $commandArgs.Add("""$Name""") | Out-Null
@@ -401,12 +404,13 @@ function Set-Secret {
                 Write-Verbose "Creating ""$Name"""
                 $commandArgs.Add("--category=$category") | Out-Null
                 $commandArgs.Add("--title=""$Name""") | Out-Null
-                $commandArgs.Add("password=""$([System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)))""") | Out-Null
-            }
-            else {
+                # using PtrToStringBSTR ensures uniform results across platforms
+                # https://stackoverflow.com/questions/60404847/are-you-able-to-use-ptrtostringauto-to-decrypt-a-secure-string-in-powershell-7-o
+                $commandArgs.Add("password=""$([System.Runtime.InteropServices.Marshal]::PtrToStringBSTR([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)))""") | Out-Null
+            } else {
                 Write-Verbose "Updating '$Name'"
                 $commandArgs.Add("""$Name""") | Out-Null
-                $commandArgs.Add("password=""$([System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)))""") | Out-Null
+                $commandArgs.Add("password=""$([System.Runtime.InteropServices.Marshal]::PtrToStringBSTR([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)))""") | Out-Null
             }
             break
         }
@@ -421,8 +425,7 @@ function Set-Secret {
                 $commandArgs.Add("--title=""$Name""") | Out-Null
                 $commandArgs.Add("username=""$($Secret.UserName)""") | Out-Null
                 $commandArgs.Add("password=""$($Secret.GetNetworkCredential().Password)""") | Out-Null
-            }
-            else {
+            } else {
                 Write-Verbose "Updating '$Name'"
                 $commandArgs.Add("""$Name""") | Out-Null
                 $commandArgs.Add("username=""$($Secret.UserName)""") | Out-Null
@@ -462,12 +465,12 @@ function Remove-Secret {
 
     Write-Verbose "'Remove-Secret' invoked ..."
 
-    if ($null -ne $AdditionalParameters){
+    if ($null -ne $AdditionalParameters) {
         $VaultParameters = $AdditionalParameters
-    }else{
-        if ($null -eq $VaultName){$VaultName = ""}
+    } else {
+        if ($null -eq $VaultName) { $VaultName = "" }
         $secretVault = Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue
-        if ($null -eq $secretVault){
+        if ($null -eq $secretVault) {
             Write-Error "The SecretManagement vault '$($VaultName)' is not registered."
             return $null
         }
@@ -488,7 +491,7 @@ function Remove-Secret {
     $result = Invoke-OpCommand $commandArgs;
     #$result.StdOut;
     #$result.StdErr;
-    if ($result.ExitCode -ne 0){
+    if ($result.ExitCode -ne 0) {
         Write-Error "An arror occurred while trying to delete the secret '$($Name)' in 1Password: $($result.StdErr)";
     }
     return ($result.ExitCode -eq 0);
